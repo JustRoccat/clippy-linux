@@ -229,7 +229,8 @@ impl AssetManager {
             },
         );
 
-        let raw = image::open("Clippy/map.png").expect("Failed to load Clippy/map.png");
+        let raw = image::load_from_memory(include_bytes!("../Clippy/map.png"))
+            .expect("Failed to load embedded Clippy/map.png");
         let mut rgba = raw.to_rgba8();
         for pixel in rgba.pixels_mut() {
             if pixel[0] == 255 && pixel[1] == 0 && pixel[2] == 255 {

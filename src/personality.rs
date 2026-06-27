@@ -1,7 +1,9 @@
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::config::ClippyConfig;
@@ -43,6 +45,8 @@ pub struct Personality {
     llm_timeout_secs: u64,
     llm_screen_vision: bool,
     llm_screen_vision_scope: String,
+    recent_comments: Mutex<VecDeque<String>>,
+    recent_limit: usize,
 }
 
 impl Personality {
@@ -73,6 +77,8 @@ impl Personality {
             llm_timeout_secs: config.llm.timeout_seconds.max(1),
             llm_screen_vision: config.llm.screen_vision,
             llm_screen_vision_scope: config.llm.screen_vision_scope.clone(),
+            recent_comments: Mutex::new(VecDeque::new()),
+            recent_limit: config.idle_chatter.recent_comments_limit.max(1),
         }
     }
 
@@ -101,7 +107,10 @@ impl Personality {
 
         if use_llm {
             let screenshot = if self.llm_screen_vision {
-                match self.capture_screen_image(&self.llm_screen_vision_scope).await {
+                match self
+                    .capture_screen_image(&self.llm_screen_vision_scope)
+                    .await
+                {
                     Ok(bytes) => Some(bytes),
                     Err(e) => {
                         eprintln!("clippy-linux: screenshot failed: {e}");
@@ -115,7 +124,8 @@ impl Personality {
             let flavor = self.flavor_description();
             let outcome = tokio::time::timeout(
                 Duration::from_secs(self.llm_timeout_secs),
-                self.llm_client.get_dynamic_comment(context, &flavor, screenshot),
+                self.llm_client
+                    .get_dynamic_comment(context, &flavor, screenshot),
             )
             .await;
 
@@ -137,17 +147,36 @@ impl Personality {
 
     pub fn static_comment_for(&self, context: &str) -> (String, String) {
         let mut rng = rand::thread_rng();
+        let mut recent = self.recent_comments.lock().unwrap();
+
+        let pick = |candidates: Vec<&String>, rng: &mut _| -> Option<String> {
+            let fresh: Vec<&String> = candidates
+                .iter()
+                .copied()
+                .filter(|c| !recent.contains(*c))
+                .collect();
+            let pool = if fresh.is_empty() {
+                &candidates
+            } else {
+                &fresh
+            };
+            pool.choose(rng).map(|c| (*c).clone())
+        };
 
         let matched = self.matching_lists(context);
         if !matched.is_empty() {
-            if let Some(list) = matched.choose(&mut rng) {
-                if let Some(comment) = list.comments.choose(&mut rng) {
-                    let animation = list
-                        .animation
-                        .clone()
-                        .unwrap_or_else(|| self.suggest_animation(context));
-                    return (comment.replace("%s", context), animation);
+            let candidates: Vec<&String> = matched.iter().flat_map(|l| l.comments.iter()).collect();
+
+            let animation = matched
+                .iter()
+                .find_map(|l| l.animation.clone())
+                .unwrap_or_else(|| self.suggest_animation(context));
+            if let Some(comment) = pick(candidates, &mut rng) {
+                recent.push_back(comment.clone());
+                if recent.len() > self.recent_limit {
+                    recent.pop_front();
                 }
+                return (comment.replace("%s", context), animation);
             }
         }
 
@@ -157,8 +186,15 @@ impl Personality {
             .filter(|l| l.triggers.is_empty())
             .flat_map(|l| l.comments.iter())
             .collect();
-        if let Some(c) = general.choose(&mut rng) {
-            return ((*c).replace("%s", context), self.suggest_animation(context));
+        if let Some(comment) = pick(general, &mut rng) {
+            recent.push_back(comment.clone());
+            if recent.len() > self.recent_limit {
+                recent.pop_front();
+            }
+            return (
+                comment.replace("%s", context),
+                self.suggest_animation(context),
+            );
         }
 
         ("RTFM.".to_string(), "Idle1_1".to_string())
@@ -378,12 +414,11 @@ impl Personality {
         let path = uri
             .strip_prefix("file://")
             .ok_or_else(|| "Unexpected URI scheme".to_string())?;
-        
-        let bytes = std::fs::read(path)
-            .map_err(|e| format!("Failed to read screenshot: {e}"))?;
-            
+
+        let bytes = std::fs::read(path).map_err(|e| format!("Failed to read screenshot: {e}"))?;
+
         let _ = std::fs::remove_file(path);
-        
+
         Ok(bytes)
     }
 }

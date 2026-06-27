@@ -12,54 +12,42 @@ pub const CLIPPY_DRAW_W: u32 = CLIPPY_W;
 pub const CLIPPY_DRAW_H: u32 = CLIPPY_H;
 
 pub const WINDOW_W: i32 = 280;
-pub const WINDOW_H: i32 = 200;
+pub const WINDOW_H: i32 = 320;
+
+const IDLE_QUIRK_NAMES: &[&str] = &[
+    "IdleAtom",
+    "IdleEyeBrowRaise",
+    "IdleFingerTap",
+    "IdleHeadScratch",
+    "IdleRopePile",
+    "IdleSideToSide",
+    "IdleSnooze",
+    "LookDown",
+    "LookDownLeft",
+    "LookDownRight",
+    "LookLeft",
+    "LookRight",
+    "LookUp",
+    "LookUpLeft",
+    "LookUpRight",
+];
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum AnimState {
-    Idle,
-    EyeBrowRaise,
-    FingerTap,
-    LookRight,
-    Thinking,
-    Alert,
-    Congratulate,
-}
+pub enum AnimState {}
 
 impl AnimState {
-    pub fn animation_name(&self) -> &str {
-        match self {
-            AnimState::Idle => "Idle1_1",
-            AnimState::EyeBrowRaise => "IdleEyeBrowRaise",
-            AnimState::FingerTap => "IdleFingerTap",
-            AnimState::LookRight => "LookRight",
-            AnimState::Thinking => "Thinking",
-            AnimState::Alert => "Alert",
-            AnimState::Congratulate => "Congratulate",
-        }
-    }
-
     pub fn from_name(name: &str) -> AnimState {
-        match name {
-            "IdleEyeBrowRaise" => AnimState::EyeBrowRaise,
-            "IdleFingerTap" => AnimState::FingerTap,
-            "LookRight" => AnimState::LookRight,
-            "Thinking" => AnimState::Thinking,
-            "Alert" => AnimState::Alert,
-            "Congratulate" => AnimState::Congratulate,
-            _ => AnimState::Idle,
+        if name == "Idle1_1" {
+            AnimState::Idle
+        } else if IDLE_QUIRK_NAMES.contains(&name) {
+            AnimState::IdleQuirk
+        } else {
+            AnimState::OneShot
         }
     }
 
     fn loops(&self) -> bool {
         matches!(self, AnimState::Idle)
-    }
-
-    fn idle_quirks() -> Vec<AnimState> {
-        vec![
-            AnimState::EyeBrowRaise,
-            AnimState::FingerTap,
-            AnimState::LookRight,
-        ]
     }
 }
 
@@ -75,7 +63,7 @@ pub struct AppState {
     pub comment_cooldown: Duration,
     pub bubble_show: Duration,
     pub next_idle_switch_after: u64,
-    pub last_idle_variant: Option<AnimState>,
+    pub last_idle_variant: Option<String>,
     pub dirty: bool,
 }
 
@@ -104,22 +92,22 @@ impl AppState {
         rand::thread_rng().gen_range(10..=22)
     }
 
-    fn validate_animation_name(name: &str) -> String {
-        match name {
-            "Idle1_1" | "IdleEyeBrowRaise" | "IdleFingerTap" | "LookRight" | "Thinking"
-            | "Alert" | "Congratulate" => name.to_string(),
-            _ => "Idle1_1".to_string(),
+    fn validate_animation_name(assets: &AssetManager, name: &str) -> String {
+        if assets.animations.contains_key(name) {
+            name.to_string()
+        } else {
+            "Idle1_1".to_string()
         }
     }
 
-    pub fn show_comment(&mut self, comment: String, animation: String) {
+    pub fn show_comment(&mut self, comment: String, animation: String, assets: &AssetManager) {
         let now = Instant::now();
         if let Some(last) = self.last_comment_at {
             if now.duration_since(last) < self.comment_cooldown {
                 return;
             }
         }
-        let animation = Self::validate_animation_name(&animation);
+        let animation = Self::validate_animation_name(assets, &animation);
         self.current_comment = comment;
         self.current_animation = animation;
         self.anim_state = AnimState::from_name(&self.current_animation);
@@ -187,10 +175,7 @@ impl UiRenderer {
             .map(|a| !a.frames.is_empty() && state.frame_index >= a.frames.len() - 1)
             .unwrap_or(true);
 
-        let is_idle_quirk = matches!(
-            state.anim_state,
-            AnimState::EyeBrowRaise | AnimState::FingerTap | AnimState::LookRight
-        );
+        let is_idle_quirk = state.anim_state == AnimState::IdleQuirk;
         if is_idle_quirk && anim_finished && state.current_comment.is_empty() {
             state.anim_state = AnimState::Idle;
             state.current_animation = "Idle1_1".to_string();
@@ -206,21 +191,28 @@ impl UiRenderer {
             && elapsed_since_change >= state.next_idle_switch_after
         {
             use rand::Rng;
-            let mut variants = AnimState::idle_quirks();
-            if let Some(last) = state.last_idle_variant.clone() {
+
+            let mut variants: Vec<&str> = IDLE_QUIRK_NAMES
+                .iter()
+                .copied()
+                .filter(|name| self.assets.animations.contains_key(*name))
+                .collect();
+            if let Some(last) = state.last_idle_variant.as_deref() {
                 if variants.len() > 1 {
                     variants.retain(|v| *v != last);
                 }
             }
-            let pick = rand::thread_rng().gen_range(0..variants.len());
-            let new_state = variants[pick].clone();
+            if !variants.is_empty() {
+                let pick = rand::thread_rng().gen_range(0..variants.len());
+                let chosen = variants[pick].to_string();
 
-            state.last_idle_variant = Some(new_state.clone());
-            state.anim_state = new_state;
-            state.current_animation = state.anim_state.animation_name().to_string();
-            state.frame_index = 0;
-            state.last_frame_update = now;
-            state.last_anim_change = now;
+                state.last_idle_variant = Some(chosen.clone());
+                state.anim_state = AnimState::IdleQuirk;
+                state.current_animation = chosen;
+                state.frame_index = 0;
+                state.last_frame_update = now;
+                state.last_anim_change = now;
+            }
             state.next_idle_switch_after = AppState::random_idle_interval();
             state.dirty = true;
         }
@@ -272,10 +264,14 @@ impl UiRenderer {
         let padding_v: f32 = 12.0;
         let line_height: f32 = 16.0;
         let char_w: f32 = 7.0;
-        let max_chars: usize = 26;
+        let max_chars: usize = 32;
         let corner_r: f32 = 12.0;
+        let tail_h: f32 = 18.0;
+
+        let clippy_top = (WINDOW_H as f32) - (CLIPPY_DRAW_H as f32) - 8.0;
 
         let lines = self.wrap_text(text, max_chars);
+
         let text_h = lines.len() as f32 * line_height;
         let max_line_px = lines
             .iter()
@@ -286,10 +282,9 @@ impl UiRenderer {
             .min(WINDOW_W as f32 - 16.0);
         let bubble_h = text_h + padding_v * 2.0;
 
-        let clippy_top = (WINDOW_H as f32) - (CLIPPY_DRAW_H as f32) - 8.0;
         let clippy_right = (WINDOW_W as f32) - 8.0;
         let bx = (clippy_right - bubble_w).max(8.0);
-        let by = (clippy_top - bubble_h - 18.0).max(8.0);
+        let by = (clippy_top - bubble_h - tail_h).max(8.0);
 
         self.fill_rounded_rect(
             pixmap,
@@ -322,34 +317,45 @@ impl UiRenderer {
             2.0,
         );
 
-        let tail_x = bx + bubble_w - 28.0;
-        let tail_top = by + bubble_h;
-        let tail_tip_x = tail_x + 10.0;
-        let tail_tip_y = tail_top + 17.0;
+        let tail_base_x = bx + bubble_w - 32.0;
+        let tail_base_x2 = tail_base_x + 18.0;
+        let tail_top_y = by + bubble_h;
+        let tail_tip_x = tail_base_x + 6.0;
+        let tail_tip_y = tail_top_y + 16.0;
 
-        let mut tb = PathBuilder::new();
-        tb.move_to(tail_x, tail_top);
-        tb.line_to(tail_tip_x, tail_tip_y);
-        tb.line_to(tail_x + 22.0, tail_top);
-        tb.close();
-        if let Some(tp) = tb.finish() {
-            let mut fill = Paint::default();
-            fill.set_color(tiny_skia::Color::from_rgba8(255, 252, 230, 248));
-            pixmap.fill_path(&tp, &fill, FillRule::Winding, Transform::identity(), None);
+        {
+            let mut tb = PathBuilder::new();
+            tb.move_to(tail_base_x, tail_top_y);
+            tb.line_to(tail_tip_x, tail_tip_y);
+            tb.line_to(tail_base_x2, tail_top_y);
+            tb.close();
+            if let Some(tp) = tb.finish() {
+                let mut fill = Paint::default();
+                fill.set_color(tiny_skia::Color::from_rgba8(255, 252, 230, 248));
+                pixmap.fill_path(&tp, &fill, FillRule::Winding, Transform::identity(), None);
+            }
+        }
 
-            let mut border = Paint::default();
-            border.set_color(tiny_skia::Color::from_rgba8(30, 50, 120, 230));
+        {
+            let mut border_paint = Paint::default();
+            border_paint.set_color(tiny_skia::Color::from_rgba8(30, 50, 120, 230));
             let stroke = Stroke {
                 width: 2.0,
                 ..Default::default()
             };
-            pixmap.stroke_path(&tp, &border, &stroke, Transform::identity(), None);
 
-            let mut cover = Paint::default();
-            cover.set_color(tiny_skia::Color::from_rgba8(255, 252, 230, 248));
-            if let Some(cover_rect) = Rect::from_xywh(tail_x + 1.0, tail_top - 1.5, 22.0, 4.0) {
-                let cp = PathBuilder::from_rect(cover_rect);
-                pixmap.fill_path(&cp, &cover, FillRule::Winding, Transform::identity(), None);
+            let mut lb = PathBuilder::new();
+            lb.move_to(tail_base_x, tail_top_y + 1.0);
+            lb.line_to(tail_tip_x, tail_tip_y);
+            if let Some(lp) = lb.finish() {
+                pixmap.stroke_path(&lp, &border_paint, &stroke, Transform::identity(), None);
+            }
+
+            let mut rb = PathBuilder::new();
+            rb.move_to(tail_tip_x, tail_tip_y);
+            rb.line_to(tail_base_x2, tail_top_y + 1.0);
+            if let Some(rp) = rb.finish() {
+                pixmap.stroke_path(&rp, &border_paint, &stroke, Transform::identity(), None);
             }
         }
 

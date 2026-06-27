@@ -29,6 +29,7 @@ fn main() {
     {
         let state = state.clone();
         let personality = personality.clone();
+        let assets = assets.clone();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
             rt.block_on(async move {
@@ -38,20 +39,12 @@ fn main() {
                     }
                     let state = state.clone();
                     let personality = personality.clone();
+                    let assets = assets.clone();
                     tokio::spawn(async move {
-                        {
-                            let st = state.lock().unwrap();
-                            if let Some(last) = st.last_comment_at {
-                                if last.elapsed() < st.comment_cooldown {
-                                    return; // too soon, skip everything
-                                }
-                            }
-                        }
-
                         let (comment, animation) =
                             personality.comment_for(&process, CommentKind::Window).await;
                         let mut st = state.lock().unwrap();
-                        st.show_comment(comment, animation);
+                        st.show_comment(comment, animation, &assets);
                     });
                 })
                 .await;
@@ -62,6 +55,7 @@ fn main() {
     if bash_cfg.enabled {
         let state = state.clone();
         let personality = personality.clone();
+        let assets = assets.clone();
         std::thread::spawn(
             move || match BashHistoryWatcher::new(bash_cfg.history_file.clone()) {
                 Some(watcher) => {
@@ -74,21 +68,13 @@ fn main() {
                             .watch_loop(poll, chance, move |cmd| {
                                 let state = state.clone();
                                 let personality = personality.clone();
+                                let assets = assets.clone();
                                 tokio::spawn(async move {
-                                    {
-                                        let st = state.lock().unwrap();
-                                        if let Some(last) = st.last_comment_at {
-                                            if last.elapsed() < st.comment_cooldown {
-                                                return;
-                                            }
-                                        }
-                                    }
-
                                     let (comment, animation) = personality
                                         .comment_for(&cmd, CommentKind::BashCommand)
                                         .await;
                                     let mut st = state.lock().unwrap();
-                                    st.show_comment(comment, animation);
+                                    st.show_comment(comment, animation, &assets);
                                 });
                             })
                             .await;
@@ -103,6 +89,44 @@ fn main() {
                 }
             },
         );
+    }
+
+    if config.idle_chatter.enabled {
+        let state = state.clone();
+        let personality = personality.clone();
+        let assets = assets.clone();
+        let idle_cfg = config.idle_chatter.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            rt.block_on(async move {
+                let lo = idle_cfg.min_seconds.min(idle_cfg.max_seconds).max(1);
+                let hi = idle_cfg.min_seconds.max(idle_cfg.max_seconds).max(lo);
+                loop {
+                    let secs = {
+                        use rand::Rng;
+                        rand::thread_rng().gen_range(lo..=hi)
+                    };
+                    tokio::time::sleep(Duration::from_secs(secs)).await;
+
+                    {
+                        let st = state.lock().unwrap();
+                        if !st.current_comment.is_empty() {
+                            continue;
+                        }
+                        if let Some(last) = st.last_comment_at {
+                            if last.elapsed() < st.comment_cooldown {
+                                continue;
+                            }
+                        }
+                    }
+
+                    let (comment, animation) =
+                        personality.comment_for("idle", CommentKind::Window).await;
+                    let mut st = state.lock().unwrap();
+                    st.show_comment(comment, animation, &assets);
+                }
+            });
+        });
     }
 
     wayland::WaylandApp::run(state, assets);

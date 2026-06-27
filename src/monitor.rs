@@ -49,15 +49,32 @@ impl SystemMonitor {
             }
         }
 
-        if let Ok(out) = Command::new("swaymsg").args(["-t", "get_tree"]).output() {
+        if let Ok(out) = Command::new("swaymsg").args(["-t", "get_focused"]).output() {
             let stdout = String::from_utf8_lossy(&out.stdout);
 
-            if let Some(idx) = stdout.find("\"focused\": true") {
-                let slice = &stdout[idx..];
-                if let Some(app_id_start) = slice.find("\"app_id\":") {
-                    let _app_id_end = slice[app_id_start..].find('\"').unwrap_or(0);
+            if let Some(start) = stdout.find("\"app_id\":") {
+                let rest = stdout[start + 9..].trim_start();
+                if rest.starts_with('"') {
+                    let inner = &rest[1..];
+                    if let Some(end) = inner.find('"') {
+                        let app_id = &inner[..end];
+                        if !app_id.is_empty() && app_id != "null" {
+                            return Some(app_id.to_string());
+                        }
+                    }
+                }
+            }
 
-                    return Some("SwayApp".to_string());
+            if let Some(start) = stdout.find("\"name\":") {
+                let rest = stdout[start + 7..].trim_start();
+                if rest.starts_with('"') {
+                    let inner = &rest[1..];
+                    if let Some(end) = inner.find('"') {
+                        let name = &inner[..end];
+                        if !name.is_empty() && name != "null" {
+                            return Some(name.to_string());
+                        }
+                    }
                 }
             }
         }
@@ -108,16 +125,6 @@ impl SystemMonitor {
     }
 }
 
-/// Tails the bash history file and reports new commands as they show up.
-///
-/// Note: bash normally only appends to ~/.bash_history when the shell exits,
-/// not after every command. For Clippy to react in near-real-time, add this
-/// to your ~/.bashrc so every command is flushed immediately:
-///
-///     PROMPT_COMMAND="history -a; $PROMPT_COMMAND"
-///
-/// Without that, Clippy will still pick up commands eventually (whenever a
-/// shell flushes its history), just not instantly.
 pub struct BashHistoryWatcher {
     path: PathBuf,
     last_pos: u64,
@@ -193,7 +200,8 @@ impl BashHistoryWatcher {
         buf.lines()
             .map(|l| l.trim())
             .filter(|l| !l.is_empty() && !l.starts_with('#'))
-            .map(|l| l.to_string())
-            .collect()
+            .last()
+            .map(|l| vec![l.to_string()])
+            .unwrap_or_default()
     }
 }

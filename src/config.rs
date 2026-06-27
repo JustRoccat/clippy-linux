@@ -10,9 +10,9 @@ pub struct ClippyConfig {
     pub update_interval_seconds: u64,
     pub comment_cooldown_seconds: u64,
     pub bubble_show_seconds: u64,
-    pub personality_multiplier: f32,
     pub comment_lists: CommentListsConfig,
     pub bash_history: BashHistoryConfig,
+    pub idle_chatter: IdleChatterConfig,
     #[serde(rename = "ai-slop")]
     pub llm: LLMConfig,
 }
@@ -73,6 +73,26 @@ impl Default for BashHistoryConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(default)]
+pub struct IdleChatterConfig {
+    pub enabled: bool,
+    pub min_seconds: u64,
+    pub max_seconds: u64,
+    pub recent_comments_limit: usize,
+}
+
+impl Default for IdleChatterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            min_seconds: 15,
+            max_seconds: 45,
+            recent_comments_limit: 10,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(default)]
 pub struct LLMConfig {
     pub enabled: bool,
     pub api_key: String,
@@ -116,9 +136,9 @@ impl Default for ClippyConfig {
             update_interval_seconds: 5,
             comment_cooldown_seconds: 40,
             bubble_show_seconds: 7,
-            personality_multiplier: 1.0,
             comment_lists: CommentListsConfig::default(),
             bash_history: BashHistoryConfig::default(),
+            idle_chatter: IdleChatterConfig::default(),
             llm: LLMConfig::default(),
         }
     }

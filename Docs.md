@@ -38,7 +38,7 @@ Comment lists live in `~/.config/clippy‑linux/comments/` as JSON files. A full
 ### Fields
 
 - **`name`** – required, the list identifier. Used by `comment_lists.active` in config to filter which lists are loaded.
-- **`triggers`** – optional, a list of substrings matched case‑insensitively against the current window name or bash command. Any match makes the list a candidate. If triggers is empty, the list becomes a generic fallback and can fire when no trigger‑based list matches.
+- **`triggers`** – optional, a list of substrings matched case‑insensitively against the current window name or bash command. Any match makes the list a candidate. If triggers is empty, the list becomes a generic fallback and can fire when no trigger‑based list matches. Theres also trigger "idle"
 - **`animation`** – optional, the Clippy animation to play when a comment from this list fires. See the animations section. If omitted, clippy‑linux picks one automatically based on context keywords.
 - **`comments`** – required, the list of comment strings. One is picked at random each time the list fires. `%s` anywhere in the string is replaced with the raw context value (window name or command).
 

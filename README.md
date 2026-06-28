@@ -148,6 +148,10 @@ clippy-linux reads `/etc/os-release` on startup and adjusts its baseline attitud
 
 ---
 
+##
+Clippy sprite from:
+https://github.com/pithings/clippy
+
 ## License
 
 MIT

@@ -148,9 +148,31 @@ clippy-linux reads `/etc/os-release` on startup and adjusts its baseline attitud
 
 ---
 
-##
+## Sprites stolen from
 Clippy sprite from:
 https://github.com/pithings/clippy
+
+## Contributing
+
+Are you upset because Clippy doesn't work on your obscure, heavily patched window manager that only three people use? Fix it yourself.
+
+Contributions are welcome, especially in the following areas:
+Window Manager & DE Support: Right now, Clippy only natively understands `hyprctl` and `swaymsg`. If you want him to judge users on GNOME, KDE, Wayfire, River, or whatever esoteric rust-based WM came out last Tuesday, please open a PR with the appropriate window-tracking logic.
+More Insults: If you have particularly cutting remarks about modern software bloat, web frameworks, or specific Linux distros, update the default JSON comment lists.
+Bug Fixes: If Clippy crashes, it's a feature (he got disgusted by your system). But you can still fix it.
+
+### How to contribute
+
+1. Fork the repository.
+2. Create a feature branch (`git checkout -b feature/stop-bullying-gnome-users`).
+3. Commit your changes. Make sure the code is as clean as Clippy's conscience is dirty.
+4. Open a Pull Request.
+
+Please ensure `cargo test` passes before submitting. If you submit broken code, Clippy will know, and he will never let you forget it.
+
+## Comments
+
+I recommend making your own because the built in list is poor, maybe IF the project grows and im not sure of that i will make a new repo called "Clippy-comments" with a big ass list of comments that you can just paste into your config.
 
 ## License
 

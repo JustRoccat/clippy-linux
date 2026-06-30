@@ -1,5 +1,7 @@
 # clippy-linux
 
+## If you find this useful, a star is the only currency I get paid in
+
 A Wayland desktop pet that watches what you do and tells you it's wrong.
 
 clippy-linux is a system-wide assistant in the spirit of the original Clippy, except he doesn't want to help you. He wants to judge you. He is a Bitter Old asshole trapped in a paperclip, and he has opinions about your distro, your editor, and your questionable use of `sudo`.
